@@ -1,0 +1,2672 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DOORS 6</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    }
+    body {
+      overflow: hidden;
+      background-color: #040508;
+      color: #f1f5f9;
+      width: 100vw;
+      height: 100vh;
+    }
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    #game-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* 어두운 시야 비네트 */
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 32%, rgba(0, 0, 0, 0.95) 100%);
+      z-index: 5;
+      transition: background 0.2s;
+    }
+    #vignette.anomaly {
+      background: radial-gradient(circle at center, rgba(145, 10, 28, 0.2) 22%, rgba(20, 0, 6, 0.97) 100%);
+    }
+    #vignette.ambush {
+      background: radial-gradient(circle at center, rgba(16, 125, 92, 0.2) 22%, rgba(4, 26, 20, 0.97) 100%);
+    }
+
+    /* 1인칭 컷신 시네마틱 레터박스 바 */
+    .cutscene-bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 0;
+      background: #000;
+      z-index: 35;
+      pointer-events: none;
+      transition: height 0.35s ease;
+    }
+    #cutscene-top { top: 0; }
+    #cutscene-bottom { bottom: 0; }
+    body.in-cutscene #cutscene-top,
+    body.in-cutscene #cutscene-bottom {
+      height: 11vh;
+    }
+
+    /* 1인칭 시점 중앙 크로스헤어 점 */
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 10;
+      display: none;
+    }
+
+    /* 시작 화면 */
+    #start-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: radial-gradient(circle at 50% 35%, #19162e 0%, #040508 82%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .panel {
+      background: rgba(14, 16, 26, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 22px;
+      padding: 32px 26px;
+      width: 100%;
+      max-width: 360px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
+      text-align: center;
+    }
+    h1.game-title {
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: #f8fafc;
+      text-shadow: 0 0 24px rgba(139, 92, 246, 0.75);
+      margin-bottom: 10px;
+    }
+    .control-hint {
+      font-size: 14px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-bottom: 22px;
+      letter-spacing: 0.5px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      background: rgba(10, 14, 26, 0.95);
+      color: #fff;
+      font-size: 15px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: #8b5cf6;
+    }
+    .color-picker {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 22px;
+    }
+    .color-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .color-dot.selected {
+      border-color: #fff;
+      transform: scale(1.16);
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.65);
+    }
+    .btn {
+      width: 100%;
+      padding: 15px 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn:active {
+      transform: scale(0.97);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.45);
+      margin-bottom: 14px;
+    }
+    .join-row {
+      display: flex;
+      gap: 8px;
+    }
+    .join-row input {
+      letter-spacing: 4px;
+      font-weight: 800;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #f1f5f9;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      width: auto;
+      white-space: nowrap;
+      padding: 12px 20px;
+      font-size: 15px;
+    }
+
+    /* 상단 HUD */
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 20;
+      padding: 14px 18px;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+    }
+    .hud-box {
+      background: rgba(12, 16, 28, 0.86);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      backdrop-filter: blur(6px);
+      padding: 10px 14px;
+      border-radius: 14px;
+      pointer-events: auto;
+    }
+    .room-code-display {
+      font-size: 13px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .room-code-display strong {
+      color: #38bdf8;
+      font-size: 17px;
+      letter-spacing: 2px;
+    }
+    .hud-sub-hint {
+      font-size: 12px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-top: 6px;
+    }
+    .hud-mini-btn {
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 7px;
+      border: 1px solid #475569;
+      background: #1e293b;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+    .hud-mini-btn:hover:not(:disabled) {
+      background: #334155;
+    }
+    .hud-mini-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      border-color: #ef4444;
+      color: #fca5a5;
+    }
+    .door-progress {
+      text-align: center;
+    }
+    .door-num {
+      font-size: 20px;
+      font-weight: 900;
+      color: #fbbf24;
+      letter-spacing: 1px;
+    }
+    .hearts {
+      font-size: 16px;
+      margin-top: 2px;
+      letter-spacing: 2px;
+    }
+    .buff-icons {
+      font-size: 12px;
+      margin-top: 3px;
+      color: #7dd3fc;
+      min-height: 15px;
+    }
+    .player-list {
+      font-size: 12px;
+      color: #cbd5e1;
+      min-width: 110px;
+    }
+    .player-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 3px;
+    }
+    .dot-mini {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* 상호작용 버튼 */
+    #interact-prompt {
+      position: fixed;
+      bottom: 158px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 22;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid #fbbf24;
+      color: #fef08a;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 800;
+      display: none;
+      cursor: pointer;
+    }
+    #interact-prompt.full {
+      border-color: #ef4444;
+      color: #fca5a5;
+    }
+
+    /* 하단 인벤토리 (3칸) + 감정표현 바 */
+    #bottom-bars {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 26;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    #inventory-bar {
+      display: flex;
+      gap: 8px;
+      background: rgba(12, 16, 28, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      backdrop-filter: blur(6px);
+      padding: 6px 10px;
+      border-radius: 16px;
+    }
+    .inv-slot {
+      width: 54px;
+      height: 54px;
+      border-radius: 12px;
+      background: rgba(30, 41, 59, 0.75);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.12s, border-color 0.15s;
+    }
+    .inv-slot.has-item {
+      border-color: #fbbf24;
+      background: rgba(51, 65, 85, 0.9);
+    }
+    .inv-slot.has-item:hover {
+      transform: translateY(-3px);
+    }
+    .inv-icon {
+      font-size: 23px;
+      line-height: 1;
+    }
+    .inv-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-top: 2px;
+    }
+    .inv-key {
+      position: absolute;
+      top: 3px;
+      left: 5px;
+      font-size: 9px;
+      font-weight: 800;
+      color: #94a3b8;
+    }
+
+    #emote-bar {
+      display: flex;
+      gap: 6px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+    .emote-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(30, 41, 59, 0.85);
+      font-size: 17px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      transition: transform 0.12s;
+    }
+    .emote-btn:hover {
+      transform: scale(1.15);
+    }
+    .emote-key {
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      background: #0f172a;
+      color: #94a3b8;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 1px 3px;
+      border-radius: 4px;
+    }
+
+    /* 3D 캐릭터 머리 위 이름표 & 감정표현 말풍선 */
+    #nametags-container {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 12;
+      overflow: hidden;
+    }
+    .tag-wrapper {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .emote-bubble {
+      font-size: 26px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 16px;
+      padding: 3px 9px;
+      margin-bottom: 5px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+      animation: popEmote 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    @keyframes popEmote {
+      0% { transform: scale(0.2) translateY(10px); opacity: 0; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .nametag {
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    /* 초6 복습 퀴즈 모달 */
+    #quiz-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 45;
+      background: rgba(5, 7, 15, 0.87);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .quiz-card {
+      background: #131726;
+      border: 2px solid #6366f1;
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+    }
+    .quiz-timer-bar {
+      width: 100%;
+      height: 6px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    #quiz-timer-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+      transition: width 0.1s linear;
+    }
+    .quiz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .quiz-subject {
+      background: rgba(99, 102, 241, 0.22);
+      color: #a5b4fc;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .quiz-door-tag {
+      font-size: 12px;
+      color: #94a3b8;
+      font-weight: 700;
+    }
+    .quiz-question {
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.5;
+      color: #f8fafc;
+      margin-bottom: 18px;
+      word-break: keep-all;
+    }
+    .quiz-options {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .quiz-opt-btn {
+      background: #1e293b;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #f1f5f9;
+      padding: 13px 16px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+    .quiz-opt-btn:hover {
+      background: #2d3b55;
+      border-color: #818cf8;
+    }
+    .quiz-feedback {
+      margin-top: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      min-height: 18px;
+      text-align: center;
+    }
+    .quiz-close-btn {
+      margin-top: 10px;
+      width: 100%;
+      padding: 9px;
+      background: transparent;
+      border: 1px solid #475569;
+      color: #94a3b8;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* 엔딩 모달 */
+    #end-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(5, 7, 15, 0.92);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    /* 모바일 터치 컨트롤 */
+    #mobile-controls {
+      position: fixed;
+      bottom: 128px;
+      left: 16px;
+      right: 16px;
+      z-index: 25;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 44px);
+      grid-template-rows: repeat(2, 44px);
+      gap: 5px;
+      pointer-events: auto;
+    }
+    .pad-btn {
+      background: rgba(30, 41, 59, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #fff;
+      border-radius: 11px;
+      font-size: 17px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+    }
+    .action-touch-btn {
+      pointer-events: auto;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.85);
+      border: 2px solid #fef08a;
+      color: #0f172a;
+      font-weight: 900;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="game-canvas"></canvas>
+  <div id="vignette"></div>
+  <div id="cutscene-top" class="cutscene-bar"></div>
+  <div id="cutscene-bottom" class="cutscene-bar"></div>
+  <div id="crosshair"></div>
+  <div id="nametags-container"></div>
+
+  <!-- 시작 화면 (기본 제목 + 'wasd로 조작' + 시작 버튼만 유지) -->
+  <div id="start-screen">
+    <div class="panel">
+      <h1 class="game-title">DOORS 6</h1>
+      <div class="control-hint">wasd로 조작</div>
+
+      <div class="form-group">
+        <input type="text" id="nickname-input" placeholder="닉네임" maxlength="10" />
+      </div>
+
+      <div class="color-picker" id="color-picker">
+        <div class="color-dot selected" data-color="#38bdf8" style="background:#38bdf8;"></div>
+        <div class="color-dot" data-color="#f472b6" style="background:#f472b6;"></div>
+        <div class="color-dot" data-color="#4ade80" style="background:#4ade80;"></div>
+        <div class="color-dot" data-color="#facc15" style="background:#facc15;"></div>
+        <div class="color-dot" data-color="#a78bfa" style="background:#a78bfa;"></div>
+        <div class="color-dot" data-color="#fb923c" style="background:#fb923c;"></div>
+      </div>
+
+      <button class="btn btn-primary" id="start-btn">게임 시작</button>
+
+      <div class="join-row">
+        <input type="text" id="room-code-input" placeholder="코드" maxlength="4" />
+        <button class="btn btn-secondary" id="join-room-btn">입장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 상단 HUD -->
+  <div id="hud">
+    <div class="hud-box">
+      <div class="room-code-display">
+        <strong id="hud-room-code">----</strong>
+        <button class="hud-mini-btn" id="copy-code-btn">복사</button>
+        <button class="hud-mini-btn" id="view-toggle-btn">3인칭 [V]</button>
+        <button class="hud-mini-btn" id="sound-toggle-btn">🔊</button>
+      </div>
+      <div class="hud-sub-hint">wasd로 조작</div>
+    </div>
+
+    <div class="hud-box door-progress">
+      <div class="door-num">DOOR <span id="hud-door-num">00</span> / 25</div>
+      <div class="hearts" id="hud-hearts">❤️❤️❤️</div>
+      <div class="buff-icons" id="hud-buffs"></div>
+    </div>
+
+    <div class="hud-box player-list" id="hud-players">
+      <div id="player-list-items"></div>
+    </div>
+  </div>
+
+  <!-- 상호작용 버튼 -->
+  <div id="interact-prompt">[E]</div>
+
+  <!-- 하단 3칸 인벤토리 & 감정표현 바 -->
+  <div id="bottom-bars">
+    <div id="inventory-bar">
+      <div class="inv-slot" id="inv-slot-0" onclick="useInventorySlot(0)">
+        <span class="inv-key">Z</span>
+        <span class="inv-icon" id="inv-icon-0"></span>
+        <span class="inv-label" id="inv-label-0"></span>
+      </div>
+      <div class="inv-slot" id="inv-slot-1" onclick="useInventorySlot(1)">
+        <span class="inv-key">X</span>
+        <span class="inv-icon" id="inv-icon-1"></span>
+        <span class="inv-label" id="inv-label-1"></span>
+      </div>
+      <div class="inv-slot" id="inv-slot-2" onclick="useInventorySlot(2)">
+        <span class="inv-key">C</span>
+        <span class="inv-icon" id="inv-icon-2"></span>
+        <span class="inv-label" id="inv-label-2"></span>
+      </div>
+    </div>
+
+    <div id="emote-bar">
+      <button class="emote-btn" data-emote="👋" data-anim="wave">👋<span class="emote-key">1</span></button>
+      <button class="emote-btn" data-emote="😱" data-anim="scared">😱<span class="emote-key">2</span></button>
+      <button class="emote-btn" data-emote="🏃" data-anim="hurry">🏃<span class="emote-key">3</span></button>
+      <button class="emote-btn" data-emote="🤫" data-anim="hide">🤫<span class="emote-key">4</span></button>
+      <button class="emote-btn" data-emote="🎉" data-anim="spin">🎉<span class="emote-key">5</span></button>
+      <button class="emote-btn" data-emote="😭" data-anim="cry">😭<span class="emote-key">6</span></button>
+    </div>
+  </div>
+
+  <!-- 초6 복습 퀴즈 모달 -->
+  <div id="quiz-modal">
+    <div class="quiz-card">
+      <div class="quiz-timer-bar"><div id="quiz-timer-fill"></div></div>
+      <div class="quiz-header">
+        <span class="quiz-subject" id="quiz-subject">수학</span>
+        <span class="quiz-door-tag" id="quiz-door-tag">DOOR #01</span>
+      </div>
+      <div class="quiz-question" id="quiz-question"></div>
+      <div class="quiz-options" id="quiz-options"></div>
+      <div class="quiz-feedback" id="quiz-feedback"></div>
+      <button class="quiz-close-btn" id="quiz-close-btn">ESC</button>
+    </div>
+  </div>
+
+  <!-- 엔딩 화면 -->
+  <div id="end-modal">
+    <div class="panel">
+      <h1 class="game-title" id="end-title">CLEAR!</h1>
+      <button class="btn btn-primary" onclick="location.reload()">다시 하기</button>
+    </div>
+  </div>
+
+  <!-- 모바일 터치 컨트롤 -->
+  <div id="mobile-controls">
+    <div class="dpad">
+      <div></div>
+      <button class="pad-btn" data-key="ArrowUp">▲</button>
+      <div></div>
+      <button class="pad-btn" data-key="ArrowLeft">◀</button>
+      <button class="pad-btn" data-key="ArrowDown">▼</button>
+      <button class="pad-btn" data-key="ArrowRight">▶</button>
+    </div>
+    <button class="action-touch-btn" id="touch-action-btn">E</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. 초등학교 6학년 복습 퀴즈 문제 은행
+    // ==========================================
+    const GRADE6_QUIZZES = [
+      { subject: "수학 · 원의 넓이", q: "반지름이 6cm인 원의 넓이는 몇 cm²인가요? (원주율: 3.14)", opts: ["37.68 cm²", "113.04 cm²", "56.52 cm²", "226.08 cm²"], ans: 1 },
+      { subject: "수학 · 직육면체의 겉넓이", q: "가로 4cm, 세로 3cm, 높이 5cm인 직육면체의 겉넓이는?", opts: ["60 cm²", "47 cm²", "94 cm²", "120 cm²"], ans: 2 },
+      { subject: "수학 · 비와 비율", q: "전체 학생 40명 중 안경을 쓴 학생이 14명일 때, 백분율은 몇 %인가요?", opts: ["28%", "32%", "35%", "42%"], ans: 2 },
+      { subject: "수학 · 분수의 나눗셈", q: "2와 1/4 ÷ 3/4 을 계산하면 얼마인가요?", opts: ["2", "3", "1과 11/16", "4"], ans: 1 },
+      { subject: "수학 · 각기둥과 각뿔", q: "밑면이 육각형인 각뿔의 모서리 수와 꼭짓점 수의 합은?", opts: ["18개", "19개", "20개", "24개"], ans: 1 },
+      { subject: "수학 · 소수의 나눗셈", q: "리본 8.75m를 2.5m씩 자르면 몇 도막이 되고 몇 m가 남나요?", opts: ["3도막, 1.25m", "3도막, 0.5m", "4도막, 0.25m", "3도막, 1.5m"], ans: 0 },
+      { subject: "수학 · 비례식과 비례배분", q: "사탕 45개를 4 : 5로 나누어 가질 때, 더 많이 가지는 쪽은 몇 개인가요?", opts: ["20개", "24개", "25개", "27개"], ans: 2 },
+      { subject: "수학 · 원주율", q: "원주가 43.96cm인 원의 지름은 몇 cm인가요? (원주율: 3.14)", opts: ["7cm", "12cm", "14cm", "16cm"], ans: 2 },
+      { subject: "수학 · 분수와 소수의 혼합", q: "3/5 ÷ 0.4 + 1/2 을 계산한 값은?", opts: ["1.5", "2", "2.5", "3"], ans: 1 },
+      { subject: "수학 · 원기둥과 원뿔", q: "직각삼각형을 직각을 낀 변을 축으로 하여 한 바퀴 돌릴 때 생기는 입체도형은?", opts: ["원기둥", "원뿔", "구", "삼각뿔"], ans: 1 },
+
+      { subject: "과학 · 지구와 달의 운동", q: "달의 모양이 초승달 → 상현달 → 보름달 → 하현달로 변하는 까닭은?", opts: ["지구가 자전하기 때문", "달이 지구 주위를 공전하기 때문", "태양이 자전하기 때문", "지구의 그림자 때문"], ans: 1 },
+      { subject: "과학 · 여러 가지 기체", q: "과산화 수소수에 이산화 망가니즈를 넣었을 때 발생하며, 불씨를 살리는 기체는?", opts: ["산소", "질소", "이산화 탄소", "수소"], ans: 0 },
+      { subject: "과학 · 식물의 구조와 기능", q: "식물의 뿌리에서 흡수한 물이 잎의 기공을 통해 수증기로 빠져나가는 현상은?", opts: ["증산 작용", "광합성", "호흡 작용", "삼투 현상"], ans: 0 },
+      { subject: "과학 · 빛과 렌즈", q: "볼록 렌즈로 멀리 있는 물체를 관찰할 때 물체의 모습은 어떻게 보이나요?", opts: ["똑바로 크게 보인다", "상하좌우가 바뀌어 보인다", "항상 원래 크기로 보인다", "빛이 전혀 통과하지 않는다"], ans: 1 },
+      { subject: "과학 · 연소와 소화", q: "알코올램프의 뚜껑을 덮어 불을 끄는 것은 연소의 조건 중 무엇을 없앤 것인가요?", opts: ["탈 물질", "산소 공급", "발화점 이하 온도", "이산화 탄소"], ans: 1 },
+      { subject: "과학 · 계절의 변화", q: "계절의 변화가 생기는 가장 근본적인 이유는 지구의 자전축이 기울어진 채 무엇을 하기 때문인가요?", opts: ["지구 자전", "태양 주위 공전", "달의 공전", "밀물과 썰물"], ans: 1 },
+      { subject: "과학 · 전기의 이용", q: "전자석의 세기를 더 세게 만드는 방법으로 옳지 않은 것은?", opts: ["전지의 수를 늘린다", "에나멜선을 더 많이 감는다", "철심 대신 나무 막대를 넣는다", "전류의 세기를 세게 한다"], ans: 2 },
+      { subject: "과학 · 우리 몸의 구조", q: "혈액을 온몸으로 순환시키는 펌프 역할을 하는 기관은?", opts: ["위", "심장", "폐", "간"], ans: 1 },
+
+      { subject: "사회 · 민주주의와 삼권분립", q: "법률을 제정하고 예산안을 심의·확정하는 국가 기관은 어디인가요?", opts: ["국회", "정부", "법원", "선거관리위원회"], ans: 0 },
+      { subject: "사회 · 우리나라의 정치", q: "법의 뜻과 내용을 해석하고 적용하여 사람들 사이의 다툼을 해결하는 기관은?", opts: ["국회", "행정부", "법원", "감사원"], ans: 2 },
+      { subject: "사회 · 국민의 권리와 의무", q: "국민이 국가의 정치에 참여할 수 있는 권리(선거권, 공무담임권 등)를 무엇이라 하나요?", opts: ["자유권", "평등권", "참정권", "사회권"], ans: 2 },
+      { subject: "사회 · 세계 여러 나라", q: "영국 런던의 그리니치 천문대를 지나며 경도 0도의 기준이 되는 선은?", opts: ["적도", "본초 자오선", "북회귀선", "날짜 변경선"], ans: 1 },
+      { subject: "사회 · 경제 발전", q: "물건을 살 때 선택할 수 있는 여러 대안 중 하나를 선택함으로써 포기하게 되는 가치 중 가장 큰 것은?", opts: ["기회비용", "생산비", "희소성", "수요량"], ans: 0 },
+
+      { subject: "국어 · 속담과 관용 표현", q: "'소 잃고 외양간 고친다'와 뜻이 가장 비슷한 속담은?", opts: ["가는 말이 고와야 오는 말이 곱다", "사후 약방문", "티끌 모아 태산", "등잔 밑이 어둡다"], ans: 1 },
+      { subject: "국어 · 올바른 맞춤법", q: "다음 중 맞춤법이 올바르게 쓰인 문장은?", opts: ["내일 봬요.", "내일 뵈요.", "어이없어 헛웃음이 났다.", "문제를 마췄다."], ans: 0 },
+      { subject: "국어 · 비유적 표현", q: "사람이 아닌 사물이나 동물을 사람처럼 행동하거나 말하게 표현하는 비유법은?", opts: ["직유법", "은유법", "의인법", "반복법"], ans: 2 },
+      { subject: "국어 · 관용 표현", q: "'손이 크다'라는 관용 표현의 올바른 뜻은?", opts: ["글씨를 크게 쓴다", "씀씀이가 후하고 인심이 좋다", "싸움을 잘한다", "키가 매우 크다"], ans: 1 }
+    ];
+
+    // ==========================================
+    // 2. Web Audio API 효과음
+    // ==========================================
+    let soundEnabled = true;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, type, duration, vol = 0.15, delay = 0) {
+      if (!soundEnabled) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const now = audioCtx.currentTime + delay;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(vol, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    function playAnomalyGlassBreakSound() {
+      [2500, 3200, 1900, 4400, 2850].forEach((f, idx) => {
+        playTone(f, 'sawtooth', 0.14, 0.18, idx * 0.025);
+      });
+      playTone(105, 'square', 0.45, 0.24, 0.04);
+      playTone(54, 'sawtooth', 1.15, 0.3, 0.12);
+    }
+    function playRushPassSound() {
+      playTone(62, 'sawtooth', 1.2, 0.34, 0);
+      playTone(44, 'square', 1.3, 0.3, 0.06);
+    }
+    function playAmbushTurnSound() {
+      playTone(92, 'sawtooth', 0.65, 0.3, 0);
+      playTone(150, 'square', 0.55, 0.26, 0.1);
+    }
+    function playCutsceneRoarSound() {
+      playTone(55, 'sawtooth', 1.6, 0.35, 0.1);
+      playTone(82, 'square', 1.4, 0.28, 0.25);
+      playTone(110, 'sawtooth', 1.1, 0.24, 0.45);
+    }
+    function playDoorSound() {
+      playTone(135, 'triangle', 0.3, 0.18, 0);
+      playTone(195, 'sine', 0.35, 0.14, 0.08);
+    }
+    function playCorrectSound() {
+      playTone(523.25, 'sine', 0.14, 0.16, 0);
+      playTone(659.25, 'sine', 0.22, 0.16, 0.1);
+    }
+    function playWrongSound() {
+      playTone(155, 'sawtooth', 0.24, 0.2, 0);
+      playTone(120, 'sawtooth', 0.28, 0.2, 0.12);
+    }
+    function playItemPickupSound() {
+      playTone(660, 'sine', 0.1, 0.14, 0);
+      playTone(990, 'sine', 0.16, 0.14, 0.07);
+    }
+    function playItemUseSound() {
+      playTone(440, 'triangle', 0.14, 0.16, 0);
+      playTone(880, 'sine', 0.22, 0.16, 0.08);
+    }
+    function playEmoteSound() {
+      playTone(587.33, 'sine', 0.1, 0.12, 0);
+      playTone(880, 'sine', 0.14, 0.12, 0.07);
+    }
+
+    document.getElementById('sound-toggle-btn').onclick = () => {
+      soundEnabled = !soundEnabled;
+      document.getElementById('sound-toggle-btn').textContent = soundEnabled ? '🔊' : '🔇';
+    };
+
+    // ==========================================
+    // 3. 상향된 난이도 설정 & 미로 추격전 상수
+    // ==========================================
+    const TOTAL_DOORS = 25;
+    const ROOM_LENGTH = 32;
+    const CORRIDOR_HALF_W = 8.5;
+    const MAZE_HALF_W = 11.9;
+    const CLOSET_CAPACITY = 2;
+    const MAX_CLOSET_TIME = 7.5;
+    const MONSTER_SPAWN_CHANCE = 0.90;
+    const QUIZ_TIME_LIMIT = 14.0;
+
+    // 미로 추격전 전용 구간 (8~10번 방, 17~19번 방)
+    const MAZE_CHASE_ROOMS = [8, 9, 10, 17, 18, 19];
+
+    const ITEM_DEFS = {
+      LANTERN: { icon: '🔦', label: '랜턴', color: 0xfacc15 },
+      DRINK:   { icon: '🥤', label: '부스트', color: 0x38bdf8 },
+      MEDKIT:  { icon: '🩹', label: '치료제', color: 0xf43f5e },
+      KEY:     { icon: '🔑', label: '만능키', color: 0xf59e0b },
+      SHIELD:  { icon: '🕯️', label: '수호초', color: 0xa78bfa }
+    };
+
+    let myId = 'local-' + Math.random().toString(36).slice(2, 7);
+    let myName = '탐험가';
+    let myColor = '#38bdf8';
+    let isHost = true;
+    let roomCode = '';
+    let peer = null;
+    let connections = [];
+    let hostConn = null;
+
+    let gamePhase = 'MENU';
+    let unlockedDoor = 0;
+    let hearts = 3;
+    let hiddenClosetId = null;
+    let closetStayTimer = 0;
+    let isGhost = false;
+
+    // 1인칭 / 3인칭 시점 상태 및 컷신 잠금 상태
+    let viewMode = 'THIRD';
+    let isViewLocked = false;
+    let playerYaw = 0;
+    let playerPitch = 0;
+
+    // 1인칭 추격전 컷신 상태
+    let cutsceneActive = false;
+    let cutsceneTimer = 0;
+    let cutsceneStartX = 0;
+    let cutsceneStartZ = 0;
+    let cutsceneDoorNum = 8;
+
+    // 아이템 인벤토리 (최대 3칸) & 버프 상태
+    const MAX_INVENTORY = 3;
+    let inventory = [];
+    let lanternTimer = 0;
+    let speedBoostTimer = 0;
+    let hasShield = false;
+
+    // 몬스터 상태
+    let rushState = 'NONE';
+    let rushMode = 'SINGLE';
+    let rushMonsterZ = 20;
+    let rushDir = 1;
+    let rushPassesLeft = 0;
+    let rushHitThisLeg = false;
+
+    let chaseActive = false;
+    let chaseMonsterX = 0;
+    let chaseMonsterZ = 25;
+    let chaseHitCooldown = 0;
+    let playerTrail = [];
+    let cameraShake = 0;
+
+    const players = {};
+    const playerMeshes = {};
+    const tagWrappers = {};
+
+    // ==========================================
+    // 4. Three.js 3D 월드 구축 (대형 호텔 + 3D 미로 구역)
+    // ==========================================
+    const canvas = document.getElementById('game-canvas');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x040508);
+    scene.fog = new THREE.FogExp2(0x040508, 0.036);
+
+    const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 180);
+    camera.position.set(0, 4.5, 8);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const ambientLight = new THREE.AmbientLight(0x283347, 0.32);
+    scene.add(ambientLight);
+
+    const playerLight = new THREE.PointLight(0xfff1d0, 1.25, 22);
+    scene.add(playerLight);
+
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x221712, roughness: 0.85 });
+    const carpetMat = new THREE.MeshStandardMaterial({ color: 0x471920, roughness: 0.9 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x161b2b, roughness: 0.75 });
+    const mazeWallMat = new THREE.MeshStandardMaterial({ color: 0x1c192b, roughness: 0.65 });
+    const mazeTrimMat = new THREE.MeshStandardMaterial({ color: 0x3b1d2a, roughness: 0.6 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x36231a, roughness: 0.6 });
+    const doorWoodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.5 });
+    const closetMat = new THREE.MeshStandardMaterial({ color: 0x3f2514, roughness: 0.55 });
+    const obstacleMat = new THREE.MeshStandardMaterial({ color: 0x6b2710, roughness: 0.65 });
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x232b40, roughness: 0.65 });
+
+    const doorObjects = [];
+    const closetObjects = [];
+    const obstacleObjects = [];
+    const itemObjects = [];
+    const roomDataList = [];
+    const sparkParticles = [];
+    const guidingOrbs = [];
+
+    function mulberry32(seed) {
+      return function() {
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    function createDoorNumberTexture(num) {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 64;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#191614';
+      ctx.fillRect(0, 0, 128, 64);
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(4, 4, 120, 56);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 34px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(num).padStart(4, '0'), 64, 34);
+      return new THREE.CanvasTexture(c);
+    }
+
+    function addCloset(id, roomIdx, x, z, side) {
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.2, 2.1), closetMat);
+      box.position.y = 1.6;
+      group.add(box);
+
+      const seam = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, 2.9, 0.06),
+        new THREE.MeshBasicMaterial({ color: 0x1c110a })
+      );
+      seam.position.set(-side * 0.72, 1.55, 0);
+      group.add(seam);
+
+      const dots = [];
+      [-0.32, 0.32].forEach(dz => {
+        const dot = new THREE.Mesh(
+          new THREE.SphereGeometry(0.11, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+        );
+        dot.position.set(-side * 0.75, 2.95, dz);
+        group.add(dot);
+        dots.push(dot);
+      });
+
+      scene.add(group);
+      closetObjects.push({ id, roomIdx, x, z, dots });
+    }
+
+    function spawnWorldItem(id, type, x, z) {
+      const def = ITEM_DEFS[type];
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+
+      const table = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.62, 0.72, 0.82, 14),
+        trimMat
+      );
+      table.position.y = 0.41;
+      group.add(table);
+
+      const orb = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.35, 0),
+        new THREE.MeshBasicMaterial({ color: def.color })
+      );
+      orb.position.y = 1.22;
+      group.add(orb);
+
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.42, 0.54, 20),
+        new THREE.MeshBasicMaterial({ color: def.color, side: THREE.DoubleSide })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.84;
+      group.add(ring);
+
+      scene.add(group);
+      obstacleObjects.push({ x, z, halfW: 0.65, halfD: 0.65 });
+      itemObjects.push({ id, type, x, z, orb, ring, collected: false });
+    }
+
+    // 3D 미로 방 생성기
+    function buildMazeRoomSegment(roomIdx, zCenter, rng) {
+      const COLS = 7;
+      const ROWS = 8;
+      const CELL_W = (MAZE_HALF_W * 2) / COLS;
+      const CELL_D = ROOM_LENGTH / ROWS;
+
+      const openGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+      const mainPathCells = [];
+
+      let curC = 3;
+      let curR = 0;
+      openGrid[curR][curC] = true;
+      mainPathCells.push([curR, curC]);
+
+      openGrid[0][2] = true;
+      openGrid[0][4] = true;
+
+      while (curR < ROWS - 1) {
+        const dir = rng() < 0.5 ? -1 : 1;
+        const steps = 1 + Math.floor(rng() * 3);
+        for (let s = 0; s < steps; s++) {
+          const nextC = curC + dir;
+          if (nextC >= 1 && nextC <= COLS - 2) {
+            curC = nextC;
+            if (!openGrid[curR][curC]) {
+              openGrid[curR][curC] = true;
+              mainPathCells.push([curR, curC]);
+            }
+          }
+        }
+        curR++;
+        if (!openGrid[curR][curC]) {
+          openGrid[curR][curC] = true;
+          mainPathCells.push([curR, curC]);
+        }
+      }
+
+      while (curC !== 3) {
+        curC += curC < 3 ? 1 : -1;
+        if (!openGrid[curR][curC]) {
+          openGrid[curR][curC] = true;
+          mainPathCells.push([curR, curC]);
+        }
+      }
+
+      for (let b = 0; b < 4; b++) {
+        const [br, bc] = mainPathCells[Math.floor(rng() * (mainPathCells.length - 2)) + 1];
+        const bDir = rng() < 0.5 ? -1 : 1;
+        for (let step = 1; step <= 2; step++) {
+          const tc = bc + bDir * step;
+          if (tc >= 0 && tc < COLS && br >= 1 && br <= ROWS - 2) {
+            openGrid[br][tc] = true;
+          }
+        }
+      }
+
+      mainPathCells.forEach(([pr, pc], idx) => {
+        if (idx % 2 === 1) {
+          const gx = (pc - (COLS - 1) / 2) * CELL_W;
+          const gz = zCenter + ROOM_LENGTH / 2 - (pr + 0.5) * CELL_D;
+          const gOrb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.16, 8, 8),
+            new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.72 })
+          );
+          gOrb.position.set(gx, 0.22, gz);
+          scene.add(gOrb);
+          guidingOrbs.push(gOrb);
+        }
+      });
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (!openGrid[r][c]) {
+            const wx = (c - (COLS - 1) / 2) * CELL_W;
+            const wz = zCenter + ROOM_LENGTH / 2 - (r + 0.5) * CELL_D;
+
+            const wBlock = new THREE.Mesh(
+              new THREE.BoxGeometry(CELL_W, 5.4, CELL_D),
+              mazeWallMat
+            );
+            wBlock.position.set(wx, 2.7, wz);
+            scene.add(wBlock);
+
+            const baseboard = new THREE.Mesh(
+              new THREE.BoxGeometry(CELL_W + 0.04, 0.45, CELL_D + 0.04),
+              mazeTrimMat
+            );
+            baseboard.position.set(wx, 0.22, wz);
+            scene.add(baseboard);
+
+            obstacleObjects.push({
+              x: wx,
+              z: wz,
+              halfW: CELL_W * 0.5,
+              halfD: CELL_D * 0.5
+            });
+          }
+        }
+      }
+    }
+
+    function buildGiantHotel() {
+      let closetCounter = 0;
+      let itemCounter = 0;
+      const itemTypes = Object.keys(ITEM_DEFS);
+      const rng = mulberry32(202606);
+
+      for (let i = 0; i <= TOTAL_DOORS; i++) {
+        const zCenter = -i * ROOM_LENGTH;
+        const isMazeRoom = MAZE_CHASE_ROOMS.includes(i);
+        const halfW = isMazeRoom ? MAZE_HALF_W : CORRIDOR_HALF_W;
+
+        const rInfo = {
+          roomIdx: i,
+          zCenter,
+          lamps: [],
+          paintings: [],
+          flickerTimer: 0
+        };
+
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2, 0.4, ROOM_LENGTH), floorMat);
+        floor.position.set(0, -0.2, zCenter);
+        scene.add(floor);
+
+        if (!isMazeRoom) {
+          const carpet = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.04, ROOM_LENGTH), carpetMat);
+          carpet.position.set(0, 0.01, zCenter);
+          scene.add(carpet);
+        }
+
+        const ceiling = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2, 0.4, ROOM_LENGTH), wallMat);
+        ceiling.position.set(0, 5.6, zCenter);
+        scene.add(ceiling);
+
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 5.8, ROOM_LENGTH), wallMat);
+        leftWall.position.set(-halfW - 0.3, 2.7, zCenter);
+        scene.add(leftWall);
+
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 5.8, ROOM_LENGTH), wallMat);
+        rightWall.position.set(halfW + 0.3, 2.7, zCenter);
+        scene.add(rightWall);
+
+        [-9.5, 0, 9.5].forEach(lzOffset => {
+          const lz = zCenter + lzOffset;
+          const lampLight = new THREE.PointLight(isMazeRoom ? 0xef4444 : 0xffb74d, isMazeRoom ? 0.45 : 0.65, 22);
+          lampLight.position.set(0, 4.8, lz);
+          scene.add(lampLight);
+
+          const cord = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.03, 0.65, 6),
+            new THREE.MeshBasicMaterial({ color: 0x334155 })
+          );
+          cord.position.set(0, 5.2, lz);
+          scene.add(cord);
+
+          const bulb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.28, 10, 10),
+            new THREE.MeshBasicMaterial({ color: isMazeRoom ? 0xfca5a5 : 0xfef08a })
+          );
+          bulb.position.set(0, 4.85, lz);
+          scene.add(bulb);
+
+          rInfo.lamps.push({ light: lampLight, bulb, cord, x: 0, y: 4.85, z: lz, broken: false });
+        });
+
+        if (isMazeRoom) {
+          buildMazeRoomSegment(i, zCenter, rng);
+        } else {
+          [-1, 1].forEach(side => {
+            const pGroup = new THREE.Group();
+            pGroup.position.set(side * (halfW - 0.05), 2.9, zCenter + side * 4.5);
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.7, 2.4), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+            const art = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.4, 2.1), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+            pGroup.add(frame, art);
+            scene.add(pGroup);
+            rInfo.paintings.push(pGroup);
+          });
+
+          [[-4.2, -7.5], [4.2, -7.5], [-4.2, 7.5], [4.2, 7.5]].forEach(([px, pzOff]) => {
+            const pz = zCenter + pzOff;
+            const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.4, 1.1), pillarMat);
+            pillar.position.set(px, 2.7, pz);
+            scene.add(pillar);
+            obstacleObjects.push({ x: px, z: pz, halfW: 0.6, halfD: 0.6 });
+          });
+
+          if (i >= 1 && i < TOTAL_DOORS) {
+            addCloset('c-' + (closetCounter++), i, -halfW + 0.85, zCenter + 8.5, -1);
+            addCloset('c-' + (closetCounter++), i, halfW - 0.85, zCenter + 3.0, 1);
+            addCloset('c-' + (closetCounter++), i, -halfW + 0.85, zCenter - 3.0, -1);
+            addCloset('c-' + (closetCounter++), i, halfW - 0.85, zCenter - 8.5, 1);
+
+            const obsX1 = (i % 2 === 0) ? 2.1 : -2.1;
+            const crate1 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.4, 1.8), obstacleMat);
+            crate1.position.set(obsX1, 0.7, zCenter + 2.5);
+            scene.add(crate1);
+            obstacleObjects.push({ x: obsX1, z: zCenter + 2.5, halfW: 1.45, halfD: 0.95 });
+
+            const obsX2 = -obsX1;
+            const crate2 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 1.8), obstacleMat);
+            crate2.position.set(obsX2, 0.7, zCenter - 4.0);
+            scene.add(crate2);
+            obstacleObjects.push({ x: obsX2, z: zCenter - 4.0, halfW: 1.35, halfD: 0.95 });
+
+            const item1Type = itemTypes[(i * 3) % itemTypes.length];
+            const item1X = (i % 2 === 0) ? -5.8 : 5.8;
+            spawnWorldItem('it-' + (itemCounter++), item1Type, item1X, zCenter + 4.5);
+          }
+        }
+
+        if (i < TOTAL_DOORS) {
+          const doorNum = i + 1;
+          const doorZ = zCenter - ROOM_LENGTH / 2;
+          const nextIsMaze = MAZE_CHASE_ROOMS.includes(doorNum);
+          const wallSpanW = Math.max(halfW, nextIsMaze ? MAZE_HALF_W : CORRIDOR_HALF_W);
+
+          const sideWallW = wallSpanW - 1.35;
+          const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(sideWallW, 5.6, 0.8), trimMat);
+          leftFrame.position.set(-1.35 - sideWallW / 2, 2.8, doorZ);
+          scene.add(leftFrame);
+
+          const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(sideWallW, 5.6, 0.8), trimMat);
+          rightFrame.position.set(1.35 + sideWallW / 2, 2.8, doorZ);
+          scene.add(rightFrame);
+
+          const topFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.0, 0.8), trimMat);
+          topFrame.position.set(0, 4.6, doorZ);
+          scene.add(topFrame);
+
+          const pivot = new THREE.Group();
+          pivot.position.set(-1.35, 0, doorZ);
+
+          const isFinal = doorNum === TOTAL_DOORS;
+          const doorMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(2.7, 3.6, 0.3),
+            isFinal ? new THREE.MeshStandardMaterial({ color: 0x059669, emissive: 0x064e3b }) : doorWoodMat
+          );
+          doorMesh.position.set(1.35, 1.8, 0);
+          pivot.add(doorMesh);
+
+          const plate = new THREE.Mesh(
+            new THREE.BoxGeometry(1.0, 0.5, 0.08),
+            new THREE.MeshBasicMaterial({ map: createDoorNumberTexture(doorNum) })
+          );
+          plate.position.set(1.35, 2.55, 0.19);
+          pivot.add(plate);
+
+          scene.add(pivot);
+          doorObjects.push({ doorNum, pivot, z: doorZ, opened: false });
+        }
+
+        roomDataList.push(rInfo);
+      }
+    }
+    buildGiantHotel();
+
+    // ==========================================
+    // 5. 몬스터 3D 메시
+    // ==========================================
+    const rushMesh = new THREE.Group();
+    const rushCoreMat = new THREE.MeshBasicMaterial({ color: 0x090514, transparent: true, opacity: 0.94 });
+    const rushAuraMat = new THREE.MeshBasicMaterial({ color: 0x6d28d9, transparent: true, opacity: 0.42 });
+    const rushCore = new THREE.Mesh(new THREE.BoxGeometry(CORRIDOR_HALF_W * 1.94, 4.8, 2.8), rushCoreMat);
+    const rushAura = new THREE.Mesh(new THREE.BoxGeometry(CORRIDOR_HALF_W * 1.98, 5.2, 3.6), rushAuraMat);
+    rushMesh.add(rushCore, rushAura);
+
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+    [[-4.8, 2.7], [-2.2, 3.3], [0, 2.3], [2.4, 3.2], [5.1, 2.5]].forEach(([ex, ey]) => {
+      const eyeF = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), eyeMat);
+      eyeF.position.set(ex, ey, 1.55);
+      const eyeB = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), eyeMat);
+      eyeB.position.set(ex, ey, -1.55);
+      rushMesh.add(eyeF, eyeB);
+    });
+    rushMesh.position.set(0, 2.4, 50);
+    rushMesh.visible = false;
+    scene.add(rushMesh);
+
+    const chaseMesh = new THREE.Group();
+    const chaseBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.15, 1.45, 4.2, 16),
+      new THREE.MeshBasicMaterial({ color: 0x06060b })
+    );
+    chaseBody.position.y = 2.1;
+    chaseMesh.add(chaseBody);
+
+    const chaseAura = new THREE.Mesh(
+      new THREE.SphereGeometry(1.65, 14, 14),
+      new THREE.MeshBasicMaterial({ color: 0x991b1b, transparent: true, opacity: 0.35 })
+    );
+    chaseAura.position.y = 2.4;
+    chaseMesh.add(chaseAura);
+
+    const chaseEyeMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+    [[-0.45, 3.2, -1.1], [0.45, 3.2, -1.1], [0, 2.6, -1.2], [-0.45, 3.2, 1.1], [0.45, 3.2, 1.1]].forEach(([ex, ey, ez]) => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), chaseEyeMat);
+      eye.position.set(ex, ey, ez);
+      chaseMesh.add(eye);
+    });
+    chaseMesh.position.set(0, 0, 50);
+    chaseMesh.visible = false;
+    scene.add(chaseMesh);
+
+    function spawnBrokenLampSparks(x, y, z, colorHex = 0xfef08a) {
+      for (let i = 0; i < 24; i++) {
+        const p = new THREE.Mesh(
+          new THREE.BoxGeometry(0.11, 0.11, 0.11),
+          new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? colorHex : 0xe0f2fe })
+        );
+        p.position.set(x + (Math.random() - 0.5) * 0.6, y, z + (Math.random() - 0.5) * 0.6);
+        scene.add(p);
+        sparkParticles.push({
+          mesh: p,
+          vx: (Math.random() - 0.5) * 6.0,
+          vy: (Math.random() - 0.2) * 3.2,
+          vz: (Math.random() - 0.5) * 6.0,
+          life: 1.3 + Math.random() * 0.5
+        });
+      }
+    }
+
+    function triggerRoomAnomaly(roomIdx, isAmbush = false) {
+      const rInfo = roomDataList[roomIdx];
+      if (!rInfo) return;
+      rInfo.flickerTimer = 5.0;
+
+      playAnomalyGlassBreakSound();
+      cameraShake = 0.52;
+      const vig = document.getElementById('vignette');
+      vig.classList.remove('anomaly', 'ambush');
+      vig.classList.add(isAmbush ? 'ambush' : 'anomaly');
+
+      const sparkColor = isAmbush ? 0x34d399 : 0xef4444;
+      rInfo.lamps.forEach((lamp, idx) => {
+        lamp.broken = true;
+        lamp.bulb.material.color.setHex(sparkColor);
+        lamp.bulb.position.y -= 0.4;
+        lamp.cord.rotation.z = idx % 2 === 0 ? 0.35 : -0.38;
+        lamp.light.color.setHex(sparkColor);
+        spawnBrokenLampSparks(lamp.x, lamp.y, lamp.z, sparkColor);
+      });
+
+      rInfo.paintings.forEach((p, idx) => {
+        p.rotation.x = idx === 0 ? 0.4 : -0.44;
+      });
+    }
+
+    // ==========================================
+    // 6. 3D 캐릭터 & 1인칭/3인칭 전환 (추격전 시 1인칭 고정)
+    // ==========================================
+    function createCuteCharacterMesh(colorHex) {
+      const group = new THREE.Group();
+      const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 });
+
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.85, 16), bodyMat);
+      torso.position.y = 0.55;
+      group.add(torso);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 16, 16), bodyMat);
+      head.position.y = 1.25;
+      group.add(head);
+
+      const pack = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.55, 0.28),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
+      );
+      pack.position.set(0, 0.65, 0.42);
+      group.add(pack);
+
+      const whiteEye = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+
+      [-0.16, 0.16].forEach(ex => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), whiteEye);
+        eye.position.set(ex, 1.3, -0.4);
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), pupilMat);
+        pupil.position.set(ex, 1.3, -0.49);
+        group.add(eye, pupil);
+      });
+
+      return group;
+    }
+
+    function applyViewModeUI() {
+      const btn = document.getElementById('view-toggle-btn');
+      const ch = document.getElementById('crosshair');
+      if (isViewLocked) {
+        viewMode = 'FIRST';
+        btn.textContent = '1인칭 고정';
+        btn.disabled = true;
+        ch.style.display = 'block';
+        return;
+      }
+      btn.disabled = false;
+      if (viewMode === 'FIRST') {
+        btn.textContent = '1인칭 [V]';
+        ch.style.display = 'block';
+      } else {
+        btn.textContent = '3인칭 [V]';
+        ch.style.display = 'none';
+        playerPitch = 0;
+      }
+    }
+
+    function toggleViewMode() {
+      if (isViewLocked) {
+        playWrongSound();
+        return;
+      }
+      viewMode = viewMode === 'THIRD' ? 'FIRST' : 'THIRD';
+      applyViewModeUI();
+    }
+    document.getElementById('view-toggle-btn').onclick = toggleViewMode;
+
+    // 마우스 드래그 시점 회전
+    let isDraggingLook = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (cutsceneActive) return;
+      isDraggingLook = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => {
+      isDraggingLook = false;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingLook || cutsceneActive) return;
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+
+      playerYaw -= dx * 0.0055;
+      if (viewMode === 'FIRST') {
+        playerPitch = Math.max(-0.65, Math.min(0.65, playerPitch - dy * 0.0045));
+      }
+    });
+
+    // 모바일 화면 우측 터치 드래그 시점 회전
+    let touchLookId = null;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
+    canvas.addEventListener('touchstart', (e) => {
+      if (cutsceneActive) return;
+      for (const t of e.changedTouches) {
+        if (t.clientX > window.innerWidth * 0.35 && touchLookId === null) {
+          touchLookId = t.identifier;
+          lastTouchX = t.clientX;
+          lastTouchY = t.clientY;
+        }
+      }
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      if (cutsceneActive) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchLookId) {
+          const dx = t.clientX - lastTouchX;
+          const dy = t.clientY - lastTouchY;
+          lastTouchX = t.clientX;
+          lastTouchY = t.clientY;
+          playerYaw -= dx * 0.007;
+          if (viewMode === 'FIRST') {
+            playerPitch = Math.max(-0.65, Math.min(0.65, playerPitch - dy * 0.005));
+          }
+        }
+      }
+    });
+    canvas.addEventListener('touchend', (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchLookId) touchLookId = null;
+      }
+    });
+
+    function ensurePlayerVisual(id, data) {
+      if (!playerMeshes[id]) {
+        const mesh = createCuteCharacterMesh(data.color || '#38bdf8');
+        scene.add(mesh);
+        playerMeshes[id] = mesh;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'tag-wrapper';
+        wrap.innerHTML = `<div class="emote-bubble" style="display:none;"></div><div class="nametag"></div>`;
+        document.getElementById('nametags-container').appendChild(wrap);
+        tagWrappers[id] = wrap;
+      }
+
+      const mesh = playerMeshes[id];
+      const hideMyMeshInFirstPerson = (id === myId && viewMode === 'FIRST');
+      mesh.visible = !data.hiddenClosetId && !hideMyMeshInFirstPerson;
+      mesh.traverse(child => {
+        if (child.isMesh && child.material) {
+          child.material.transparent = !!data.ghost;
+          child.material.opacity = data.ghost ? 0.42 : 1.0;
+        }
+      });
+
+      const wrap = tagWrappers[id];
+      const tag = wrap.querySelector('.nametag');
+      tag.textContent = (data.ghost ? '👻 ' : '') + data.name;
+
+      const bubble = wrap.querySelector('.emote-bubble');
+      if (data.emote && Date.now() - data.emoteTime < 2600) {
+        bubble.textContent = data.emote;
+        bubble.style.display = 'block';
+      } else {
+        bubble.style.display = 'none';
+      }
+    }
+
+    function updatePlayerListUI() {
+      const container = document.getElementById('player-list-items');
+      container.innerHTML = '';
+      Object.entries(players).forEach(([id, p]) => {
+        const div = document.createElement('div');
+        div.className = 'player-item';
+        div.innerHTML = `<span class="dot-mini" style="background:${p.color}"></span>
+          <span>${p.name} ${p.ghost ? '👻' : ''}</span>`;
+        container.appendChild(div);
+      });
+    }
+
+    function triggerEmote(emoteChar, animType) {
+      if (!players[myId] || gamePhase === 'MENU') return;
+      playEmoteSound();
+      players[myId].emote = emoteChar;
+      players[myId].emoteAnim = animType;
+      players[myId].emoteTime = Date.now();
+      ensurePlayerVisual(myId, players[myId]);
+
+      if (!isHost && hostConn && hostConn.open) {
+        hostConn.send({ type: 'EMOTE', emote: emoteChar, anim: animType });
+      }
+    }
+
+    document.querySelectorAll('.emote-btn').forEach(btn => {
+      btn.onclick = () => triggerEmote(btn.dataset.emote, btn.dataset.anim);
+    });
+
+    // ==========================================
+    // 7. 인벤토리 (최대 3칸) & 아이템 효과 로직
+    // ==========================================
+    function renderInventoryUI() {
+      for (let i = 0; i < MAX_INVENTORY; i++) {
+        const slotEl = document.getElementById(`inv-slot-${i}`);
+        const iconEl = document.getElementById(`inv-icon-${i}`);
+        const labelEl = document.getElementById(`inv-label-${i}`);
+        const itemType = inventory[i];
+        if (itemType && ITEM_DEFS[itemType]) {
+          slotEl.classList.add('has-item');
+          iconEl.textContent = ITEM_DEFS[itemType].icon;
+          labelEl.textContent = ITEM_DEFS[itemType].label;
+        } else {
+          slotEl.classList.remove('has-item');
+          iconEl.textContent = '';
+          labelEl.textContent = '';
+        }
+      }
+    }
+
+    function updateBuffsHUD() {
+      const parts = [];
+      if (hasShield) parts.push('🕯️보호');
+      if (lanternTimer > 0) parts.push(`🔦${Math.ceil(lanternTimer)}s`);
+      if (speedBoostTimer > 0) parts.push(`🥤${Math.ceil(speedBoostTimer)}s`);
+      if (hiddenClosetId) parts.push(`🫁${Math.max(0, MAX_CLOSET_TIME - closetStayTimer).toFixed(1)}s`);
+      document.getElementById('hud-buffs').textContent = parts.join(' ');
+    }
+
+    function useInventorySlot(slotIdx) {
+      if (gamePhase !== 'PLAYING' || isGhost || cutsceneActive) return;
+      const itemType = inventory[slotIdx];
+      if (!itemType) return;
+
+      if (itemType === 'LANTERN') {
+        lanternTimer = 25;
+        inventory.splice(slotIdx, 1);
+        playItemUseSound();
+      } else if (itemType === 'DRINK') {
+        speedBoostTimer = 12;
+        inventory.splice(slotIdx, 1);
+        playItemUseSound();
+      } else if (itemType === 'MEDKIT') {
+        if (hearts >= 3) {
+          playWrongSound();
+          return;
+        }
+        hearts = Math.min(3, hearts + 1);
+        document.getElementById('hud-hearts').textContent = '❤️'.repeat(hearts) + '🖤'.repeat(3 - hearts);
+        inventory.splice(slotIdx, 1);
+        playItemUseSound();
+      } else if (itemType === 'SHIELD') {
+        if (hasShield) {
+          playWrongSound();
+          return;
+        }
+        hasShield = true;
+        inventory.splice(slotIdx, 1);
+        playItemUseSound();
+      } else if (itemType === 'KEY') {
+        const me = players[myId];
+        const nextDoor = doorObjects.find(d => d.doorNum === unlockedDoor + 1);
+        if (me && nextDoor && Math.hypot(me.x - 0, me.z - nextDoor.z) < 3.4) {
+          inventory.splice(slotIdx, 1);
+          playItemUseSound();
+          closeQuizModal();
+          sendToHost({ type: 'OPEN_DOOR', doorNum: nextDoor.doorNum });
+        } else {
+          playWrongSound();
+          return;
+        }
+      }
+      renderInventoryUI();
+      updateBuffsHUD();
+    }
+    window.useInventorySlot = useInventorySlot;
+
+    function markItemCollectedLocal(itemId) {
+      const it = itemObjects.find(o => o.id === itemId);
+      if (it && !it.collected) {
+        it.collected = true;
+        it.orb.visible = false;
+        it.ring.visible = false;
+      }
+    }
+
+    // ==========================================
+    // 8. 시작 버튼 & 온라인 멀티플레이어 (즉시 시작 보장)
+    // ==========================================
+    const colorDots = document.querySelectorAll('.color-dot');
+    colorDots.forEach(dot => {
+      dot.onclick = () => {
+        colorDots.forEach(d => d.classList.remove('selected'));
+        dot.classList.add('selected');
+        myColor = dot.dataset.color;
+      };
+    });
+
+    function initLocalPlayer() {
+      const rawName = document.getElementById('nickname-input').value.trim();
+      myName = rawName || '탐험가' + Math.floor(10 + Math.random() * 89);
+      players[myId] = {
+        name: myName,
+        color: myColor,
+        x: 0,
+        z: 4,
+        yaw: 0,
+        hiddenClosetId: null,
+        ghost: false,
+        emote: '',
+        emoteAnim: '',
+        emoteTime: 0
+      };
+      ensurePlayerVisual(myId, players[myId]);
+      updatePlayerListUI();
+    }
+
+    function enterGameScreenImmediately() {
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('hud').style.display = 'flex';
+      document.getElementById('bottom-bars').style.display = 'flex';
+      document.getElementById('hud-room-code').textContent = roomCode || 'SOLO';
+      if ('ontouchstart' in window || window.innerWidth < 820) {
+        document.getElementById('mobile-controls').style.display = 'flex';
+      }
+      gamePhase = 'PLAYING';
+    }
+
+    function broadcastFromHost(payload) {
+      if (!isHost) return;
+      connections.forEach(conn => {
+        if (conn.open) conn.send(payload);
+      });
+    }
+
+    function sendToHost(payload) {
+      if (isHost) {
+        handleNetworkMessage(myId, payload);
+      } else if (hostConn && hostConn.open) {
+        hostConn.send(payload);
+      }
+    }
+
+    // '게임 시작' 버튼: 클릭 즉시 기다림 없이 플레이 시작 + 백그라운드 멀티 호스팅 연결
+    document.getElementById('start-btn').onclick = () => {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      isHost = true;
+      roomCode = String(Math.floor(1000 + Math.random() * 9000));
+      initLocalPlayer();
+      enterGameScreenImmediately();
+
+      try {
+        if (typeof Peer !== 'undefined') {
+          const peerId = 'doors6-v5-' + roomCode;
+          peer = new Peer(peerId);
+          peer.on('open', (id) => {
+            const oldData = players[myId];
+            delete players[myId];
+            if (playerMeshes[myId]) {
+              scene.remove(playerMeshes[myId]);
+              delete playerMeshes[myId];
+            }
+            if (tagWrappers[myId]) {
+              tagWrappers[myId].remove();
+              delete tagWrappers[myId];
+            }
+            myId = id;
+            players[myId] = oldData;
+            ensurePlayerVisual(myId, players[myId]);
+            updatePlayerListUI();
+          });
+
+          peer.on('connection', (conn) => {
+            connections.push(conn);
+            conn.on('data', (data) => handleNetworkMessage(conn.peer, data));
+            conn.on('close', () => {
+              delete players[conn.peer];
+              if (playerMeshes[conn.peer]) {
+                scene.remove(playerMeshes[conn.peer]);
+                delete playerMeshes[conn.peer];
+              }
+              if (tagWrappers[conn.peer]) {
+                tagWrappers[conn.peer].remove();
+                delete tagWrappers[conn.peer];
+              }
+              updatePlayerListUI();
+            });
+          });
+        }
+      } catch (e) {
+        // PeerJS 미지원/오프라인 환경에서도 싱글플레이로 정상 진행
+      }
+    };
+
+    // 코드 입력 후 '입장' 버튼
+    document.getElementById('join-room-btn').onclick = () => {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const code = document.getElementById('room-code-input').value.trim();
+      if (code.length !== 4) {
+        playWrongSound();
+        return;
+      }
+      isHost = false;
+      roomCode = code;
+
+      try {
+        peer = new Peer();
+        peer.on('open', (id) => {
+          myId = id;
+          initLocalPlayer();
+          hostConn = peer.connect('doors6-v5-' + roomCode);
+
+          hostConn.on('open', () => {
+            enterGameScreenImmediately();
+            hostConn.send({ type: 'JOIN', player: players[myId] });
+          });
+
+          hostConn.on('data', (data) => handleClientReceive(data));
+        });
+      } catch (e) {
+        playWrongSound();
+      }
+    };
+
+    document.getElementById('copy-code-btn').onclick = () => {
+      navigator.clipboard?.writeText(roomCode);
+      document.getElementById('copy-code-btn').textContent = '✓';
+      setTimeout(() => document.getElementById('copy-code-btn').textContent = '복사', 1200);
+    };
+
+    function getClosetOccupantCount(closetId) {
+      let count = 0;
+      Object.values(players).forEach(p => {
+        if (p.hiddenClosetId === closetId) count++;
+      });
+      return count;
+    }
+
+    function handleNetworkMessage(senderId, data) {
+      if (data.type === 'JOIN') {
+        players[senderId] = data.player;
+        ensurePlayerVisual(senderId, data.player);
+        updatePlayerListUI();
+        broadcastFromHost({ type: 'SYNC_ALL', players, unlockedDoor, gamePhase, chaseActive });
+      } else if (data.type === 'MOVE') {
+        if (players[senderId]) {
+          players[senderId].x = data.x;
+          players[senderId].z = data.z;
+          players[senderId].yaw = data.yaw || 0;
+          players[senderId].hiddenClosetId = data.hiddenClosetId;
+          players[senderId].ghost = data.ghost;
+        }
+      } else if (data.type === 'EMOTE') {
+        if (players[senderId]) {
+          players[senderId].emote = data.emote;
+          players[senderId].emoteAnim = data.anim;
+          players[senderId].emoteTime = Date.now();
+        }
+      } else if (data.type === 'PICKUP_ITEM') {
+        markItemCollectedLocal(data.itemId);
+        broadcastFromHost({ type: 'ITEM_COLLECTED', itemId: data.itemId });
+      } else if (data.type === 'OPEN_DOOR') {
+        hostOpenDoor(data.doorNum);
+      }
+    }
+
+    function handleClientReceive(data) {
+      if (data.type === 'SYNC_ALL') {
+        Object.entries(data.players).forEach(([id, p]) => {
+          if (id !== myId) {
+            players[id] = p;
+            ensurePlayerVisual(id, p);
+          }
+        });
+        updatePlayerListUI();
+        if (data.unlockedDoor > unlockedDoor) {
+          for (let d = unlockedDoor + 1; d <= data.unlockedDoor; d++) {
+            applyDoorOpenedLocal(d, false);
+          }
+        }
+      } else if (data.type === 'DOOR_OPENED') {
+        applyDoorOpenedLocal(data.doorNum, true);
+      } else if (data.type === 'ITEM_COLLECTED') {
+        markItemCollectedLocal(data.itemId);
+      } else if (data.type === 'MONSTER_EVENT') {
+        if (data.kind === 'SINGLE') {
+          triggerRushSequence(data.doorNum, 'SINGLE', 1);
+        } else if (data.kind === 'AMBUSH') {
+          triggerRushSequence(data.doorNum, 'AMBUSH', data.passes || 3);
+        } else if (data.kind === 'CHASE') {
+          startMazeChaseWithCutscene(data.doorNum);
+        }
+      }
+    }
+
+    setInterval(() => {
+      if (!players[myId] || gamePhase === 'MENU') return;
+      if (isHost) {
+        broadcastFromHost({ type: 'SYNC_ALL', players, unlockedDoor, gamePhase, chaseActive });
+      } else if (hostConn && hostConn.open) {
+        hostConn.send({
+          type: 'MOVE',
+          x: players[myId].x,
+          z: players[myId].z,
+          yaw: playerYaw,
+          hiddenClosetId: hiddenClosetId,
+          ghost: isGhost
+        });
+      }
+    }, 60);
+
+    // ==========================================
+    // 9. 초6 퀴즈 (14초 제한시간), 몬스터 패턴 & 1인칭 컷신 미로 추격전
+    // ==========================================
+    let usedQuizIndices = new Set();
+    let quizTimerRemaining = 0;
+    let quizOpen = false;
+
+    function closeQuizModal() {
+      quizOpen = false;
+      document.getElementById('quiz-modal').style.display = 'none';
+    }
+
+    function openQuizForDoor(doorNum) {
+      if (chaseActive || rushState !== 'NONE' || cutsceneActive) return;
+
+      let idx;
+      if (usedQuizIndices.size >= GRADE6_QUIZZES.length) usedQuizIndices.clear();
+      do {
+        idx = Math.floor(Math.random() * GRADE6_QUIZZES.length);
+      } while (usedQuizIndices.has(idx));
+      usedQuizIndices.add(idx);
+
+      const qObj = GRADE6_QUIZZES[idx];
+      document.getElementById('quiz-subject').textContent = qObj.subject;
+      document.getElementById('quiz-door-tag').textContent = `DOOR #${String(doorNum).padStart(2, '0')}`;
+      document.getElementById('quiz-question').textContent = qObj.q;
+      document.getElementById('quiz-feedback').textContent = '';
+
+      quizTimerRemaining = QUIZ_TIME_LIMIT;
+      quizOpen = true;
+      document.getElementById('quiz-timer-fill').style.width = '100%';
+
+      const optsContainer = document.getElementById('quiz-options');
+      optsContainer.innerHTML = '';
+
+      qObj.opts.forEach((optText, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'quiz-opt-btn';
+        btn.textContent = `${i + 1}. ${optText}`;
+        btn.onclick = () => {
+          if (!quizOpen) return;
+          if (i === qObj.ans) {
+            playCorrectSound();
+            quizOpen = false;
+            document.getElementById('quiz-feedback').style.color = '#4ade80';
+            document.getElementById('quiz-feedback').textContent = 'O';
+            setTimeout(() => {
+              closeQuizModal();
+              sendToHost({ type: 'OPEN_DOOR', doorNum });
+            }, 240);
+          } else {
+            playWrongSound();
+            document.getElementById('quiz-feedback').style.color = '#f87171';
+            document.getElementById('quiz-feedback').textContent = 'X (-❤️)';
+            takeDamage();
+          }
+        };
+        optsContainer.appendChild(btn);
+      });
+
+      document.getElementById('quiz-modal').style.display = 'flex';
+    }
+
+    document.getElementById('quiz-close-btn').onclick = closeQuizModal;
+
+    function hostOpenDoor(doorNum) {
+      if (doorNum <= unlockedDoor) return;
+      applyDoorOpenedLocal(doorNum, true);
+      broadcastFromHost({ type: 'DOOR_OPENED', doorNum });
+
+      if (doorNum >= TOTAL_DOORS) return;
+
+      // 미로 추격전 구간 (8~10, 17~19) 진입 / 진행 / 탈출 판정
+      if (MAZE_CHASE_ROOMS.includes(doorNum)) {
+        if (!chaseActive) {
+          startMazeChaseWithCutscene(doorNum);
+          broadcastFromHost({ type: 'MONSTER_EVENT', kind: 'CHASE', doorNum });
+        }
+        return;
+      } else if (chaseActive) {
+        endMazeChaseEvent();
+        return;
+      }
+
+      // 일반 구간: 90% 확률로 몬스터 출현
+      if (doorNum >= 1 && Math.random() < MONSTER_SPAWN_CHANCE) {
+        if (Math.random() < 0.52) {
+          const passes = Math.random() < 0.5 ? 3 : 4;
+          triggerRushSequence(doorNum, 'AMBUSH', passes);
+          broadcastFromHost({ type: 'MONSTER_EVENT', kind: 'AMBUSH', doorNum, passes });
+        } else {
+          triggerRushSequence(doorNum, 'SINGLE', 1);
+          broadcastFromHost({ type: 'MONSTER_EVENT', kind: 'SINGLE', doorNum });
+        }
+      }
+    }
+
+    function applyDoorOpenedLocal(doorNum, playFx) {
+      if (doorNum <= unlockedDoor) return;
+      unlockedDoor = doorNum;
+      document.getElementById('hud-door-num').textContent = String(doorNum).padStart(2, '0');
+      const doorObj = doorObjects.find(d => d.doorNum === doorNum);
+      if (doorObj) doorObj.opened = true;
+      if (playFx) playDoorSound();
+
+      if (!MAZE_CHASE_ROOMS.includes(doorNum) && chaseActive) {
+        endMazeChaseEvent();
+      }
+
+      if (doorNum >= TOTAL_DOORS) {
+        chaseActive = false;
+        chaseMesh.visible = false;
+        isViewLocked = false;
+        applyViewModeUI();
+        setTimeout(() => {
+          gamePhase = 'VICTORY';
+          document.getElementById('end-title').textContent = 'ESCAPE CLEAR!';
+          document.getElementById('end-modal').style.display = 'flex';
+        }, 700);
+      }
+    }
+
+    // 몬스터 패턴 1 & 2: 단발 러시 및 3~4회 왕복 앰부시
+    function triggerRushSequence(doorNum, mode, passes) {
+      if (rushState !== 'NONE') return;
+      rushState = 'ANOMALY';
+      rushMode = mode;
+      rushPassesLeft = passes;
+      rushHitThisLeg = false;
+
+      const isAmbush = mode === 'AMBUSH';
+      rushCoreMat.color.setHex(isAmbush ? 0x042f2e : 0x090514);
+      rushAuraMat.color.setHex(isAmbush ? 0x10b981 : 0x6d28d9);
+
+      triggerRoomAnomaly(doorNum, isAmbush);
+      triggerRoomAnomaly(Math.max(0, doorNum - 1), isAmbush);
+
+      setTimeout(() => {
+        rushState = 'CHARGING';
+        rushDir = 1;
+        rushMonsterZ = -(unlockedDoor + 3) * ROOM_LENGTH;
+        rushMesh.visible = true;
+        rushMesh.position.set(0, 2.4, rushMonsterZ);
+        playRushPassSound();
+      }, 1150);
+    }
+
+    // 몬스터 패턴 3: 미로 추격전 시작 + 1인칭 컷신 & 1인칭 고정
+    function startMazeChaseWithCutscene(doorNum) {
+      chaseActive = true;
+      cutsceneActive = true;
+      cutsceneTimer = 3.2;
+      cutsceneDoorNum = doorNum;
+
+      viewMode = 'FIRST';
+      isViewLocked = true;
+      playerYaw = 0;
+      playerPitch = 0;
+      applyViewModeUI();
+      document.body.classList.add('in-cutscene');
+
+      const entryDoorZ = -(doorNum - 0.5) * ROOM_LENGTH;
+      if (players[myId]) {
+        players[myId].x = 0;
+        players[myId].z = entryDoorZ - 1.8;
+        cutsceneStartX = players[myId].x;
+        cutsceneStartZ = players[myId].z;
+      }
+
+      chaseMonsterX = 0;
+      chaseMonsterZ = entryDoorZ + 3.8;
+      chaseMesh.position.set(chaseMonsterX, 0, chaseMonsterZ);
+      chaseMesh.visible = true;
+      playerTrail = [{ x: 0, z: entryDoorZ - 1.8 }];
+
+      triggerRoomAnomaly(doorNum, false);
+      playCutsceneRoarSound();
+      document.getElementById('vignette').classList.add('anomaly');
+    }
+
+    function endMazeChaseEvent() {
+      chaseActive = false;
+      cutsceneActive = false;
+      chaseMesh.visible = false;
+      playerTrail = [];
+      document.body.classList.remove('in-cutscene');
+      document.getElementById('vignette').classList.remove('anomaly');
+
+      isViewLocked = false;
+      applyViewModeUI();
+      playCorrectSound();
+    }
+
+    function takeDamage() {
+      if (isGhost) return;
+
+      if (hasShield) {
+        hasShield = false;
+        updateBuffsHUD();
+        playItemUseSound();
+        cameraShake = 0.45;
+        return;
+      }
+
+      hearts = Math.max(0, hearts - 1);
+      playWrongSound();
+      cameraShake = 0.7;
+      document.getElementById('hud-hearts').textContent = '❤️'.repeat(hearts) + '🖤'.repeat(3 - hearts);
+
+      if (hearts === 0) {
+        isGhost = true;
+        players[myId].ghost = true;
+        closeQuizModal();
+      }
+    }
+
+    // ==========================================
+    // 10. 입력 처리
+    // ==========================================
+    const keys = {};
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+      if (e.code === 'KeyE' || e.code === 'Space') {
+        if (quizOpen || cutsceneActive) return;
+        handleInteract();
+      } else if (e.code === 'KeyV') {
+        if (gamePhase !== 'MENU' && !cutsceneActive) toggleViewMode();
+      } else if (e.code === 'KeyZ') {
+        useInventorySlot(0);
+      } else if (e.code === 'KeyX') {
+        useInventorySlot(1);
+      } else if (e.code === 'KeyC') {
+        useInventorySlot(2);
+      } else if (e.code === 'Escape') {
+        closeQuizModal();
+      } else if (e.code === 'Digit1') {
+        triggerEmote('👋', 'wave');
+      } else if (e.code === 'Digit2') {
+        triggerEmote('😱', 'scared');
+      } else if (e.code === 'Digit3') {
+        triggerEmote('🏃', 'hurry');
+      } else if (e.code === 'Digit4') {
+        triggerEmote('🤫', 'hide');
+      } else if (e.code === 'Digit5') {
+        triggerEmote('🎉', 'spin');
+      } else if (e.code === 'Digit6') {
+        triggerEmote('😭', 'cry');
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    document.querySelectorAll('.pad-btn').forEach(btn => {
+      const k = btn.dataset.key;
+      btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[k] = true; });
+      btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[k] = false; });
+      btn.addEventListener('mousedown', () => { keys[k] = true; });
+      btn.addEventListener('mouseup', () => { keys[k] = false; });
+    });
+    document.getElementById('touch-action-btn').onclick = handleInteract;
+    document.getElementById('interact-prompt').onclick = handleInteract;
+
+    let nearbyTarget = null;
+
+    function handleInteract() {
+      if (gamePhase !== 'PLAYING' || !players[myId] || cutsceneActive) return;
+
+      if (hiddenClosetId) {
+        hiddenClosetId = null;
+        closetStayTimer = 0;
+        players[myId].hiddenClosetId = null;
+        playTone(280, 'sine', 0.14, 0.1);
+        return;
+      }
+
+      if (!nearbyTarget) return;
+
+      if (nearbyTarget.type === 'ITEM') {
+        if (inventory.length >= MAX_INVENTORY) {
+          playWrongSound();
+          return;
+        }
+        const it = nearbyTarget.obj;
+        if (it.collected) return;
+        inventory.push(it.type);
+        renderInventoryUI();
+        playItemPickupSound();
+        markItemCollectedLocal(it.id);
+        sendToHost({ type: 'PICKUP_ITEM', itemId: it.id });
+      } else if (nearbyTarget.type === 'CLOSET') {
+        const cObj = nearbyTarget.obj;
+        const currentCount = getClosetOccupantCount(cObj.id);
+        if (currentCount >= CLOSET_CAPACITY) {
+          playWrongSound();
+          return;
+        }
+        hiddenClosetId = cObj.id;
+        closetStayTimer = 0;
+        players[myId].hiddenClosetId = cObj.id;
+        players[myId].x = cObj.x;
+        players[myId].z = cObj.z;
+        playTone(210, 'sine', 0.18, 0.12);
+      } else if (nearbyTarget.type === 'DOOR') {
+        const dNum = nearbyTarget.obj.doorNum;
+        if (dNum !== unlockedDoor + 1) return;
+
+        if (chaseActive || rushState !== 'NONE') {
+          sendToHost({ type: 'OPEN_DOOR', doorNum: dNum });
+        } else {
+          openQuizForDoor(dNum);
+        }
+      }
+    }
+
+    function canOccupyPosition(x, z, halfWLimit, nextClosedDoorZ) {
+      if (x < -halfWLimit + 0.65 || x > halfWLimit - 0.65) return false;
+      if (z > 12.0) return false;
+      if (nextClosedDoorZ !== null && z < nextClosedDoorZ + 0.68) return false;
+
+      const r = 0.35;
+      for (const obs of obstacleObjects) {
+        if (Math.abs(x - obs.x) < obs.halfW + r && Math.abs(z - obs.z) < obs.halfD + r) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // ==========================================
+    // 11. 메인 게임 루프
+    // ==========================================
+    const clock = new THREE.Clock();
+    let rushTurnPause = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.getElapsedTime();
+
+      if (quizOpen) {
+        quizTimerRemaining -= dt;
+        const pct = Math.max(0, (quizTimerRemaining / QUIZ_TIME_LIMIT) * 100);
+        document.getElementById('quiz-timer-fill').style.width = pct + '%';
+        if (quizTimerRemaining <= 0) {
+          quizOpen = false;
+          closeQuizModal();
+          takeDamage();
+        }
+      }
+
+      if (hiddenClosetId && !isGhost) {
+        closetStayTimer += dt;
+        if (closetStayTimer > MAX_CLOSET_TIME - 2.2) {
+          cameraShake = Math.max(cameraShake, 0.25);
+        }
+        if (closetStayTimer >= MAX_CLOSET_TIME) {
+          hiddenClosetId = null;
+          closetStayTimer = 0;
+          if (players[myId]) players[myId].hiddenClosetId = null;
+          takeDamage();
+        }
+        updateBuffsHUD();
+      }
+
+      if (lanternTimer > 0) {
+        lanternTimer = Math.max(0, lanternTimer - dt);
+        updateBuffsHUD();
+      }
+      if (speedBoostTimer > 0) {
+        speedBoostTimer = Math.max(0, speedBoostTimer - dt);
+        updateBuffsHUD();
+      }
+
+      doorObjects.forEach(d => {
+        const targetRot = d.opened ? -Math.PI * 0.55 : 0;
+        d.pivot.rotation.y += (targetRot - d.pivot.rotation.y) * 9 * dt;
+      });
+
+      closetObjects.forEach(c => {
+        const occ = getClosetOccupantCount(c.id);
+        const isFull = occ >= CLOSET_CAPACITY;
+        c.dots.forEach((dot, idx) => {
+          if (isFull) {
+            dot.material.color.setHex(0xef4444);
+          } else if (idx < occ) {
+            dot.material.color.setHex(0xfbbf24);
+          } else {
+            dot.material.color.setHex(0x38bdf8);
+          }
+        });
+      });
+
+      itemObjects.forEach(it => {
+        if (!it.collected) {
+          it.orb.rotation.y += 2.4 * dt;
+          it.orb.position.y = 1.22 + Math.sin(elapsed * 3.5) * 0.1;
+        }
+      });
+      guidingOrbs.forEach((g, idx) => {
+        g.position.y = 0.22 + Math.sin(elapsed * 4 + idx) * 0.06;
+      });
+
+      for (let i = sparkParticles.length - 1; i >= 0; i--) {
+        const sp = sparkParticles[i];
+        sp.life -= dt;
+        sp.vy -= 9.8 * dt;
+        sp.mesh.position.x += sp.vx * dt;
+        sp.mesh.position.y += sp.vy * dt;
+        sp.mesh.position.z += sp.vz * dt;
+        if (sp.mesh.position.y < 0.05) {
+          sp.mesh.position.y = 0.05;
+          sp.vy *= -0.35;
+        }
+        if (sp.life <= 0) {
+          scene.remove(sp.mesh);
+          sparkParticles.splice(i, 1);
+        }
+      }
+
+      roomDataList.forEach(r => {
+        if (r.flickerTimer > 0) {
+          r.flickerTimer -= dt;
+          r.lamps.forEach(lamp => {
+            lamp.light.intensity = Math.random() > 0.42 ? 1.4 : 0.02;
+          });
+          r.paintings.forEach(p => {
+            p.rotation.z = Math.sin(elapsed * 45) * 0.08;
+          });
+          if (r.flickerTimer <= 0) {
+            r.lamps.forEach(lamp => {
+              lamp.light.intensity = lamp.broken ? 0.2 : 0.65;
+            });
+            r.paintings.forEach(p => { p.rotation.z = 0; });
+          }
+        }
+      });
+
+      if (players[myId] && gamePhase === 'PLAYING') {
+        const me = players[myId];
+
+        if (cutsceneActive) {
+          cutsceneTimer -= dt;
+          const progress = Math.min(1, (3.2 - cutsceneTimer) / 3.2);
+          cameraShake = Math.max(cameraShake, 0.22);
+
+          if (progress < 0.35) {
+            const t = progress / 0.35;
+            const cx = cutsceneStartX;
+            const cz = cutsceneStartZ - t * 1.6;
+            const yaw = Math.sin(t * Math.PI) * 0.45;
+            camera.position.set(cx, 1.52, cz);
+            camera.lookAt(cx - Math.sin(yaw) * 8, 1.55, cz - Math.cos(yaw) * 8);
+          } else if (progress < 0.78) {
+            const t = (progress - 0.35) / 0.43;
+            const cx = cutsceneStartX;
+            const cz = cutsceneStartZ - 1.6;
+            const turnYaw = Math.min(Math.PI, t * Math.PI * 1.25);
+            chaseMesh.position.y = -2.2 + Math.min(1, t * 1.4) * 2.2;
+            camera.position.set(cx, 1.52, cz);
+            camera.lookAt(cx - Math.sin(turnYaw) * 6, 1.85, cz - Math.cos(turnYaw) * 6);
+          } else {
+            const t = (progress - 0.78) / 0.22;
+            const cx = cutsceneStartX;
+            const cz = cutsceneStartZ - 1.6;
+            const snapYaw = Math.PI * (1 - t);
+            chaseMesh.position.y = 0;
+            camera.position.set(cx, 1.52, cz);
+            camera.lookAt(cx - Math.sin(snapYaw) * 8, 1.52, cz - Math.cos(snapYaw) * 8);
+          }
+
+          if (cutsceneTimer <= 0) {
+            cutsceneActive = false;
+            document.body.classList.remove('in-cutscene');
+            me.x = cutsceneStartX;
+            me.z = cutsceneStartZ - 1.6;
+            playerYaw = 0;
+            playerPitch = 0;
+            playerTrail = [{ x: me.x, z: me.z }];
+          }
+        } else {
+          if (keys['KeyQ']) playerYaw += 2.3 * dt;
+          me.yaw = playerYaw;
+
+          if (!hiddenClosetId && !quizOpen) {
+            let forwardInput = 0;
+            let strafeInput = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) forwardInput += 1;
+            if (keys['KeyS'] || keys['ArrowDown']) forwardInput -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) strafeInput += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) strafeInput -= 1;
+
+            if (forwardInput !== 0 || strafeInput !== 0) {
+              const len = Math.hypot(forwardInput, strafeInput);
+              const fNorm = forwardInput / len;
+              const sNorm = strafeInput / len;
+
+              const baseSpeed = chaseActive ? 7.5 : 6.8;
+              const mult = speedBoostTimer > 0 ? 1.4 : 1.0;
+              const speed = baseSpeed * mult;
+
+              const sinY = Math.sin(playerYaw);
+              const cosY = Math.cos(playerYaw);
+              const moveX = (-sinY * fNorm + cosY * sNorm);
+              const moveZ = (-cosY * fNorm - sinY * sNorm);
+
+              const curRoomIdx = Math.max(0, Math.round(-me.z / ROOM_LENGTH));
+              const halfWLimit = MAZE_CHASE_ROOMS.includes(curRoomIdx) ? MAZE_HALF_W : CORRIDOR_HALF_W;
+              const nextClosedDoor = doorObjects.find(d => d.doorNum === unlockedDoor + 1);
+              const nextDoorZ = nextClosedDoor ? nextClosedDoor.z : null;
+
+              const tryX = me.x + moveX * speed * dt;
+              if (canOccupyPosition(tryX, me.z, halfWLimit, nextDoorZ)) {
+                me.x = tryX;
+              }
+              const tryZ = me.z + moveZ * speed * dt;
+              if (canOccupyPosition(me.x, tryZ, halfWLimit, nextDoorZ)) {
+                me.z = tryZ;
+              }
+
+              if (chaseActive) {
+                const lastPt = playerTrail[playerTrail.length - 1];
+                if (!lastPt || Math.hypot(me.x - lastPt.x, me.z - lastPt.z) > 0.55) {
+                  playerTrail.push({ x: me.x, z: me.z });
+                  if (playerTrail.length > 260) playerTrail.shift();
+                }
+              }
+            }
+          }
+
+          if (chaseActive) {
+            const nextDoor = doorObjects.find(d => d.doorNum === unlockedDoor + 1);
+            if (nextDoor && Math.hypot(me.x - 0, me.z - nextDoor.z) < 2.2) {
+              sendToHost({ type: 'OPEN_DOOR', doorNum: nextDoor.doorNum });
+            }
+          }
+
+          nearbyTarget = null;
+          const promptEl = document.getElementById('interact-prompt');
+          promptEl.classList.remove('full');
+
+          if (hiddenClosetId) {
+            promptEl.textContent = '[E] 나오기';
+            promptEl.style.display = 'block';
+          } else {
+            let bestDist = 2.5;
+
+            for (const it of itemObjects) {
+              if (it.collected) continue;
+              const dist = Math.hypot(me.x - it.x, me.z - it.z);
+              if (dist < bestDist) {
+                bestDist = dist;
+                nearbyTarget = { type: 'ITEM', obj: it };
+              }
+            }
+
+            for (const c of closetObjects) {
+              const dist = Math.hypot(me.x - c.x, me.z - c.z);
+              if (dist < bestDist) {
+                bestDist = dist;
+                nearbyTarget = { type: 'CLOSET', obj: c };
+              }
+            }
+
+            const nextDoor = doorObjects.find(d => d.doorNum === unlockedDoor + 1);
+            if (nextDoor && Math.hypot(me.x - 0, me.z - nextDoor.z) < 2.8) {
+              nearbyTarget = { type: 'DOOR', obj: nextDoor };
+            }
+
+            if (nearbyTarget) {
+              if (nearbyTarget.type === 'ITEM') {
+                const def = ITEM_DEFS[nearbyTarget.obj.type];
+                if (inventory.length >= MAX_INVENTORY) {
+                  promptEl.textContent = `FULL (${inventory.length}/${MAX_INVENTORY})`;
+                  promptEl.classList.add('full');
+                } else {
+                  promptEl.textContent = `[E] ${def.icon} ${def.label}`;
+                }
+              } else if (nearbyTarget.type === 'CLOSET') {
+                const occ = getClosetOccupantCount(nearbyTarget.obj.id);
+                if (occ >= CLOSET_CAPACITY) {
+                  promptEl.textContent = `MAX (${occ}/${CLOSET_CAPACITY})`;
+                  promptEl.classList.add('full');
+                } else {
+                  promptEl.textContent = `[E] (${occ}/${CLOSET_CAPACITY})`;
+                }
+              } else {
+                promptEl.textContent = `[E] ${String(nearbyTarget.obj.doorNum).padStart(4, '0')}`;
+              }
+              promptEl.style.display = 'block';
+            } else {
+              promptEl.style.display = 'none';
+            }
+          }
+
+          cameraShake = Math.max(0, cameraShake - dt * 1.4);
+          const shakeX = (Math.random() - 0.5) * cameraShake;
+          const shakeY = (Math.random() - 0.5) * cameraShake;
+
+          const sinY = Math.sin(playerYaw);
+          const cosY = Math.cos(playerYaw);
+
+          if (viewMode === 'FIRST') {
+            const eyeY = hiddenClosetId ? 1.65 : 1.48;
+            camera.position.set(me.x + shakeX * 0.5, eyeY + shakeY * 0.5, me.z);
+            const lookDist = 10;
+            const lx = me.x - sinY * lookDist;
+            const lz = me.z - cosY * lookDist;
+            const ly = eyeY + Math.sin(playerPitch) * lookDist;
+            camera.lookAt(lx, ly, lz);
+          } else {
+            const camDist = 6.8;
+            const targetCamX = me.x + sinY * camDist;
+            const targetCamZ = me.z + cosY * camDist;
+            camera.position.x += (targetCamX - camera.position.x) * 7 * dt + shakeX;
+            camera.position.z += (targetCamZ - camera.position.z) * 7 * dt;
+            camera.position.y = 4.4 + shakeY;
+
+            const lookAhead = 5.5;
+            camera.lookAt(me.x - sinY * lookAhead, 1.35, me.z - cosY * lookAhead);
+          }
+        }
+
+        if (lanternTimer > 0) {
+          playerLight.intensity = 2.3;
+          playerLight.distance = 44;
+        } else {
+          playerLight.intensity = 1.25;
+          playerLight.distance = 22;
+        }
+        playerLight.position.set(me.x, 2.5, me.z);
+      }
+
+      Object.entries(players).forEach(([id, p]) => {
+        ensurePlayerVisual(id, p);
+        const mesh = playerMeshes[id];
+        mesh.position.x += (p.x - mesh.position.x) * 14 * dt;
+        mesh.position.z += (p.z - mesh.position.z) * 14 * dt;
+
+        const emoteElapsed = (Date.now() - (p.emoteTime || 0)) / 1000;
+        let extraY = 0;
+        mesh.rotation.y = p.yaw || 0;
+        mesh.rotation.z = 0;
+
+        if (emoteElapsed < 2.2) {
+          if (p.emoteAnim === 'wave' || p.emoteAnim === 'hurry') {
+            extraY = Math.abs(Math.sin(elapsed * 14)) * 0.45;
+          } else if (p.emoteAnim === 'spin') {
+            extraY = Math.abs(Math.sin(elapsed * 10)) * 0.35;
+            mesh.rotation.y = elapsed * 10;
+          } else if (p.emoteAnim === 'scared' || p.emoteAnim === 'cry') {
+            mesh.rotation.z = Math.sin(elapsed * 32) * 0.16;
+          }
+        }
+
+        mesh.position.y = (p.ghost ? 0.5 + Math.sin(elapsed * 4) * 0.15 : Math.abs(Math.sin(elapsed * 10)) * 0.06) + extraY;
+
+        const wrap = tagWrappers[id];
+        if (id === myId && viewMode === 'FIRST') {
+          wrap.style.display = 'none';
+          return;
+        }
+        const headPos = new THREE.Vector3(mesh.position.x, mesh.position.y + 2.05, mesh.position.z);
+        headPos.project(camera);
+        if (headPos.z < 1) {
+          const sx = (headPos.x * 0.5 + 0.5) * window.innerWidth;
+          const sy = (-headPos.y * 0.5 + 0.5) * window.innerHeight;
+          wrap.style.left = `${sx}px`;
+          wrap.style.top = `${sy}px`;
+          wrap.style.display = 'flex';
+        } else {
+          wrap.style.display = 'none';
+        }
+      });
+
+      if (rushState === 'CHARGING') {
+        if (rushTurnPause > 0) {
+          rushTurnPause -= dt;
+        } else {
+          const rushSpeed = rushMode === 'AMBUSH' ? 70 : 62;
+          rushMonsterZ += rushDir * rushSpeed * dt;
+          rushMesh.position.z = rushMonsterZ;
+          cameraShake = Math.max(cameraShake, 0.28);
+
+          const passRoomIdx = Math.round(-rushMonsterZ / ROOM_LENGTH);
+          if (roomDataList[passRoomIdx]) {
+            roomDataList[passRoomIdx].flickerTimer = Math.max(roomDataList[passRoomIdx].flickerTimer, 0.8);
+          }
+
+          if (players[myId] && !hiddenClosetId && !rushHitThisLeg && Math.abs(players[myId].z - rushMonsterZ) < 2.4) {
+            rushHitThisLeg = true;
+            takeDamage();
+          }
+
+          const minBound = -(unlockedDoor + 3) * ROOM_LENGTH - 8;
+          const maxBound = 24;
+
+          if ((rushDir === 1 && rushMonsterZ > maxBound) || (rushDir === -1 && rushMonsterZ < minBound)) {
+            rushPassesLeft--;
+            if (rushPassesLeft > 0) {
+              rushDir *= -1;
+              rushHitThisLeg = false;
+              rushTurnPause = 0.62;
+              playAmbushTurnSound();
+            } else {
+              rushState = 'NONE';
+              rushMesh.visible = false;
+              if (!chaseActive) {
+                document.getElementById('vignette').classList.remove('anomaly', 'ambush');
+              }
+            }
+          }
+        }
+      }
+
+      if (chaseActive && !cutsceneActive && players[myId]) {
+        const me = players[myId];
+        chaseHitCooldown = Math.max(0, chaseHitCooldown - dt);
+
+        if (chaseHitCooldown <= 0) {
+          const monsterSpeed = 7.15;
+          let targetX = me.x;
+          let targetZ = me.z;
+
+          if (playerTrail.length > 0) {
+            targetX = playerTrail[0].x;
+            targetZ = playerTrail[0].z;
+            if (Math.hypot(targetX - chaseMonsterX, targetZ - chaseMonsterZ) < 0.75) {
+              playerTrail.shift();
+            }
+          }
+
+          const dx = targetX - chaseMonsterX;
+          const dz = targetZ - chaseMonsterZ;
+          const dist = Math.hypot(dx, dz);
+          if (dist > 0.01) {
+            chaseMonsterX += (dx / dist) * monsterSpeed * dt;
+            chaseMonsterZ += (dz / dist) * monsterSpeed * dt;
+          }
+        }
+
+        chaseMesh.position.set(chaseMonsterX, 0, chaseMonsterZ);
+        chaseMesh.rotation.y = elapsed * 2.5;
+
+        const distToPlayer = Math.hypot(me.x - chaseMonsterX, me.z - chaseMonsterZ);
+        if (distToPlayer < 16) {
+          cameraShake = Math.max(cameraShake, (1 - distToPlayer / 16) * 0.25);
+        }
+
+        if (distToPlayer < 1.55 && chaseHitCooldown <= 0) {
+          takeDamage();
+          chaseHitCooldown = 2.0;
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
